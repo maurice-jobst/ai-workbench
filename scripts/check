@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# scripts/check — the whole CI. Lint, then unit tests when the repo has any.
+# Exit non-zero on any finding; print `check: clean` otherwise.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+python3 scripts/workbench_lint.py --root .
+
+if [ -d tests ]; then
+  python3 -m unittest discover -s tests -q
+fi
+
+echo "check: clean"

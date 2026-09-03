@@ -1,0 +1,6 @@
+__pycache__/
+.pytest_cache/
+.DS_Store
+.claude/settings.local.json
+.claude/worktrees/
+.superpowers/
