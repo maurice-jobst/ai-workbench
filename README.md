@@ -61,6 +61,8 @@ found through folder names, file names and grep.
 | [skills/session-close](skills/session-close/SKILL.md) | Capture, rewrite the desk, check, commit on a branch, open a PR. |
 | [skills/workbench-scaffold](skills/workbench-scaffold/SKILL.md) | Copies the above into a target folder; audit mode reports drift from this repo. |
 | [docs/why.md](docs/why.md) | The assumptions behind the design and the published evidence they rest on. |
+| [docs/write-path.md](docs/write-path.md) | The six-step order for a path that writes to a system the repo does not own. |
+| [STATUS.md](STATUS.md) | This repo's own desk file, kept the way the template asks. |
 | [tests/](tests/) | The lint's unit tests: `python3 -m unittest discover -s tests`. |
 
 ## Is it tied to one agent?
