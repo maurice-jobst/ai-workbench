@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # scripts/check — the whole CI. Lint, then unit tests when the repo has any.
-# Exit non-zero on any finding; print `check: clean` otherwise.
+# Exit non-zero on any finding; print `check: clean` otherwise. Never writes.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+
+command -v python3 >/dev/null 2>&1 || { echo "check: python3 (3.10+) is required" >&2; exit 2; }
 
 python3 scripts/workbench_lint.py --root .
 

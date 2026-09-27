@@ -11,13 +11,17 @@ Checks (every finding exits 1; the report is the product):
                --desk-cap lines (120). A missing default desk turns the
                check off; a missing --desk given explicitly is a finding.
   links        [[wikilinks]] and relative markdown links resolve to a file
-               in the repo; no wikilink spans a line break.
+               in the repo (a leading / means the repo root); no wikilink
+               spans a line break. Links inside code are ignored.
   skills       every skills/*/SKILL.md and .claude/skills/*/SKILL.md has
-               frontmatter with a non-empty name and description.
+               frontmatter with a name that matches its directory (lowercase
+               letters, digits and hyphens) and a description of at most
+               1024 characters.
   gist         (--gist, off by default) every markdown document opens with
                a title followed by a `One-line gist:` line.
 
-Exit 2 means the lint could not run. Standard library only.
+Exit 2 means the lint could not run. Standard library only; the lint reads
+files and never writes them.
 """
 
 from __future__ import annotations
@@ -27,14 +31,18 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+from urllib.parse import unquote
 
 DEFAULT_SKIP = (".git", "__pycache__", "node_modules", ".claude/worktrees")
-WIKILINK_RE = re.compile(r"\[\[([^\]|#<>]+?)(?:#[^\]|]*)?(?:\|[^\]]*)?\]\]")
+WIKILINK_RE = re.compile(r"\[\[([^\]|#<>\n]+?)(?:#[^\]|]*)?(?:\|[^\]]*)?\]\]")
 MDLINK_RE = re.compile(r"(?<!!)\[[^\]]*\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
 FENCE_RE = re.compile(r"^(```|~~~).*?^\1[ \t]*$", re.M | re.S)
 INLINE_CODE_RE = re.compile(r"`[^`\n]*`")
 SCHEME_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.-]*:")
 SKILL_GLOBS = ("skills/*/SKILL.md", ".claude/skills/*/SKILL.md")
+SKILL_NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+SKILL_NAME_MAX = 64
+SKILL_DESCRIPTION_MAX = 1024
 
 
 def read(p: Path) -> str:
@@ -46,9 +54,18 @@ def line_count(p: Path) -> int:
 
 
 def default_root() -> Path:
-    out = subprocess.run(["git", "rev-parse", "--show-toplevel"],
-                         capture_output=True, text=True)
+    try:
+        out = subprocess.run(["git", "rev-parse", "--show-toplevel"],
+                             capture_output=True, text=True)
+    except OSError:  # no git on this machine
+        return Path.cwd()
     return Path(out.stdout.strip()) if out.returncode == 0 else Path.cwd()
+
+
+def blank_code(raw: str) -> str:
+    """Return raw with fenced blocks and inline code removed, line numbers kept."""
+    text = FENCE_RE.sub(lambda m: "\n" * m.group(0).count("\n"), raw)
+    return INLINE_CODE_RE.sub("", text)
 
 
 def md_files(root: Path, skip: tuple[str, ...]) -> list[Path]:
@@ -82,24 +99,28 @@ def resolves(base: Path, root: Path, target: str) -> bool:
     return any(c.exists() for c in candidates)
 
 
+def md_target(base: Path, root: Path, target: str) -> Path:
+    """The file a relative markdown link points at; a leading / is the repo root."""
+    target = unquote(target.split("#", 1)[0])
+    return root / target.lstrip("/") if target.startswith("/") else base / target
+
+
 def check_links(root: Path, skip: tuple[str, ...]) -> list[str]:
     findings: list[str] = []
     for p in md_files(root, skip):
         rel = p.relative_to(root)
-        raw = read(p)
-        for n, line in enumerate(raw.splitlines(), start=1):
+        text = blank_code(read(p))
+        for n, line in enumerate(text.splitlines(), start=1):
             if line.count("[[") != line.count("]]"):
                 findings.append(f"{rel}:{n} wikilink spans a line break")
-        text = INLINE_CODE_RE.sub("", FENCE_RE.sub("", raw))
         for target in WIKILINK_RE.findall(text):
             target = target.strip()
             if target and not resolves(p.parent, root, target):
                 findings.append(f"{rel} → [[{target}]]")
         for target in MDLINK_RE.findall(text):
-            target = target.split("#", 1)[0]
-            if not target or SCHEME_RE.match(target) or target.startswith("//"):
+            if target.startswith("#") or SCHEME_RE.match(target) or target.startswith("//"):
                 continue
-            if not (p.parent / target).exists():
+            if not md_target(p.parent, root, target).exists():
                 findings.append(f"{rel} → ({target})")
     return findings
 
@@ -130,6 +151,16 @@ def check_skills(root: Path) -> list[str]:
             for key in ("name", "description"):
                 if not fm.get(key):
                     findings.append(f"{rel}: frontmatter lacks {key}")
+            name, desc = fm.get("name"), fm.get("description")
+            if name and (not SKILL_NAME_RE.match(name) or len(name) > SKILL_NAME_MAX):
+                findings.append(f"{rel}: name {name!r} is not lowercase letters, "
+                                f"digits and hyphens (max {SKILL_NAME_MAX})")
+            elif name and name != p.parent.name:
+                findings.append(f"{rel}: name {name!r} does not match "
+                                f"directory {p.parent.name!r}")
+            if desc and len(desc) > SKILL_DESCRIPTION_MAX:
+                findings.append(f"{rel}: description is {len(desc)} characters "
+                                f"(max {SKILL_DESCRIPTION_MAX})")
     return findings
 
 
@@ -170,16 +201,22 @@ def run(root: Path, agents_cap: int = 100, desk_file: str | None = None,
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    summary, _, checks = __doc__.partition("\n\n")
+    checks = checks.split("\n\n", 1)[1]  # drop the usage line; argparse prints its own
+    ap = argparse.ArgumentParser(description=summary,
+                                 epilog=checks,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--root", type=Path, default=None,
                     help="repo root (default: git toplevel, else cwd)")
-    ap.add_argument("--agents-cap", type=int, default=100)
-    ap.add_argument("--desk", default=None,
+    ap.add_argument("--agents-cap", type=int, default=100, metavar="N",
+                    help="line cap for AGENTS.md (default 100)")
+    ap.add_argument("--desk", default=None, metavar="FILE",
                     help="desk file relative to root (default STATUS.md, off if absent)")
-    ap.add_argument("--desk-cap", type=int, default=120)
+    ap.add_argument("--desk-cap", type=int, default=120, metavar="N",
+                    help="line cap for the desk file (default 120)")
     ap.add_argument("--gist", action="store_true", help="require One-line gist lines")
-    ap.add_argument("--skip", action="append", default=[],
-                    help="extra directory to leave out of link/gist checks")
+    ap.add_argument("--skip", action="append", default=[], metavar="DIR",
+                    help="extra directory to leave out of link/gist checks (repeatable)")
     args = ap.parse_args(argv)
 
     root = (args.root or default_root()).resolve()

@@ -7,15 +7,21 @@ description: Lay out a file-first AI workbench in the current folder from a clon
 
 Turn a folder into a workbench: the operating agreement, the desk file, the lint, the
 check, the hook and the two session skills. This skill is installed globally because it
-runs in folders that hold nothing yet.
+runs in folders that hold nothing yet: either as a symlink from the user's skills
+directory to `skills/workbench-scaffold` inside a clone of ai-workbench, or as a copy
+with `WORKBENCH_HOME` pointing at that clone. Everything it writes comes from the clone,
+never from memory.
 
 ## 1. Resolve the source
 
 First hit wins:
 
 1. `$WORKBENCH_HOME`, if it contains `templates/AGENTS.md` and `scripts/workbench_lint.py`.
-2. This skill's own directory, walked upward until a directory holds both.
+2. This skill's own directory with symlinks resolved (`realpath`), walked upward until a
+   directory holds both.
 3. Neither: stop, say the ai-workbench clone is missing, and name both options as the fix.
+
+Say which source was used and its path before going on; a stale clone copies stale files.
 
 ## 2. Pick the mode
 
@@ -81,5 +87,8 @@ documents what appears on first use.
 ## 5. Prove it and commit
 
 Run `git config core.hooksPath .githooks`, then `scripts/check`. Show the output and
-confirm it ends in `check: clean`. Commit the written files on a branch with a message
-naming the scaffold. Close by naming `session-open` as the command for the next session.
+confirm it ends in `check: clean`. In fresh mode the scaffold is the repository's first
+commit, on its default branch; there is nothing to open a pull request against yet. In
+adopt mode, and for every fix accepted in an audit, commit on a branch and open a pull
+request like any other change. The commit message names the scaffold. Close by naming
+`session-open` as the command for the next session.
