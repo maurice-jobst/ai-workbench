@@ -4,6 +4,7 @@ Run: python3 -m unittest discover -s tests
 """
 
 import importlib.util
+import os
 import subprocess
 import sys
 import tempfile
@@ -92,9 +93,22 @@ class Links(LintCase):
         self.write("docs/b.md", "# b\n")
         self.assertEqual(self.findings()["links"], ["docs/a.md → (c.md)"])
 
+    def test_root_absolute_and_encoded_links(self) -> None:
+        self.write("docs/a.md", "# a\n\n[root](/AGENTS.md) [gone](/nope.md) "
+                                "[space](my%20notes.md) [enc-gone](no%20file.md)\n")
+        self.write("docs/my notes.md", "# n\n")
+        self.assertEqual(self.findings()["links"],
+                         ["docs/a.md → (/nope.md)", "docs/a.md → (no%20file.md)"])
+
     def test_code_is_ignored(self) -> None:
         self.write("a.md", "# a\n\n`[[kb/x]]` and\n\n```\n[[kb/y]] [z](z.md)\n```\n")
         self.assertEqual(self.findings()["links"], [])
+
+    def test_wrapped_wikilink_inside_fence_is_ignored(self) -> None:
+        self.write("a.md", "# a\n\n```\n[[kb/\nb]]\n```\n\nsee [[kb/\nc]]\n")
+        self.assertEqual(self.findings()["links"],
+                         ["a.md:8 wikilink spans a line break",
+                          "a.md:9 wikilink spans a line break"])
 
     def test_skip_dirs(self) -> None:
         self.write("vendor/a.md", "[gone](c.md)\n")
@@ -114,6 +128,24 @@ class Skills(LintCase):
         self.assertEqual(self.findings()["skills"],
                          ["skills/y/SKILL.md: no frontmatter block",
                           ".claude/skills/x/SKILL.md: frontmatter lacks description"])
+
+    def test_name_must_match_directory(self) -> None:
+        self.write("skills/session-open/SKILL.md",
+                   "---\nname: session-close\ndescription: d\n---\n")
+        self.assertEqual(self.findings()["skills"],
+                         ["skills/session-open/SKILL.md: name 'session-close' "
+                          "does not match directory 'session-open'"])
+
+    def test_name_charset(self) -> None:
+        self.write("skills/My_Skill/SKILL.md", "---\nname: My_Skill\ndescription: d\n---\n")
+        self.assertEqual(self.findings()["skills"],
+                         ["skills/My_Skill/SKILL.md: name 'My_Skill' is not lowercase "
+                          "letters, digits and hyphens (max 64)"])
+
+    def test_description_length(self) -> None:
+        self.write("skills/s/SKILL.md", "---\nname: s\ndescription: " + "x" * 1025 + "\n---\n")
+        self.assertEqual(self.findings()["skills"],
+                         ["skills/s/SKILL.md: description is 1025 characters (max 1024)"])
 
 
 class Gist(LintCase):
@@ -153,6 +185,20 @@ class Cli(LintCase):
         out = subprocess.run([sys.executable, str(LINT), "--root", str(self.root / "nope")],
                              capture_output=True, text=True)
         self.assertEqual(out.returncode, 2)
+
+    def test_help_lists_the_checks(self) -> None:
+        out = self.run_cli("--help")
+        self.assertEqual(out.returncode, 0)
+        for check in ("agents-cap", "desk-cap", "links", "skills", "gist"):
+            self.assertIn(f"\n  {check} ", out.stdout)
+
+    def test_runs_without_git(self) -> None:
+        # No --root and no git on PATH: the lint falls back to the cwd instead of crashing.
+        env = {**os.environ, "PATH": os.path.dirname(sys.executable)}
+        out = subprocess.run([sys.executable, str(LINT)], cwd=self.root,
+                             capture_output=True, text=True, env=env)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("lint: 0 finding(s)", out.stdout)
 
 
 if __name__ == "__main__":

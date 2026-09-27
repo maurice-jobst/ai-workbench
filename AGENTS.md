@@ -32,6 +32,8 @@ anyone can copy. Nothing here depends on any other repository.
   this repo to copy from).
 - `scripts/` — `workbench_lint.py` and `check`; both are copied downstream unchanged.
 - `.githooks/pre-commit` — runs `scripts/check`; also copied downstream unchanged.
+- `.github/workflows/check.yml` — runs `scripts/check` on every push and pull request
+  here; not part of the downstream shape.
 - `tests/` — the lint's unit tests. `docs/why.md` — the assumptions and evidence.
 
 ## Commands

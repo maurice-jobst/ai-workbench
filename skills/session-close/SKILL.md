@@ -35,16 +35,18 @@ it. `check: clean` is the exit condition.
 
 ## 4. Commit on a branch
 
-Never commit on `main`. If the session is still on `main`, cut a branch named for the
-issue or the track first. Commit everything, work in progress included; the message
-names the track and references the issue (`Refs #N`). Half-done work is committed as
-WIP, never left dangling in the working tree.
+Never commit on the default branch (`main` unless `AGENTS.md` says otherwise). If the
+session is still on it, cut a branch named for the issue or the track first. Commit
+everything, work in progress included; the message names the track and references the
+issue (`Refs #N`). Half-done work is committed as WIP, never left dangling in the
+working tree.
 
 ## 5. Push and open a pull request
 
-Push the branch and open a pull request against `main` that references the issue.
-The body states what changed and what is still open. The maintainer merges; the
-session does not.
+Push the branch and open a pull request against the default branch. The body states
+what changed, what is still open, and which issue it closes or advances (`Closes #N`
+or `Refs #N`); the tracker learns about the work from that reference, so nothing is
+closed by hand. The maintainer merges; the session does not.
 
 ## 6. Hand over
 
